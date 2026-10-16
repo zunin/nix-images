@@ -112,13 +112,12 @@ jobs:
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
           nix run "$NIXPKGS#grype" -- -q -o sarif --file grype.sarif sbom:sbom.cdx.json || true
-          # SBOM results carry no file paths; GitHub code scanning requires an
-          # artifactLocation, so inject one (standard workaround for SBOM scans).
+          # SBOM results carry an empty artifactLocation.uri, which GitHub code
+          # scanning rejects; force a non-empty URI so the upload is accepted.
           jq '(.runs[0].results // []) as $r
               | .runs[0].results = ($r | map(
-                  if ((.locations // []) | length) == 0
-                  then .locations = [{ physicalLocation: { artifactLocation: { uri: "sbom.cdx.json" } } }]
-                  else . end))' grype.sarif > grype.fixed.sarif
+                  .locations = [{ physicalLocation: { artifactLocation: { uri: "sbom.cdx.json" } } }]
+                ))' grype.sarif > grype.fixed.sarif
           mv grype.fixed.sarif grype.sarif
           jq -r '"grype findings: \(.runs[0].results | length)"' grype.sarif 2>/dev/null || true
 
