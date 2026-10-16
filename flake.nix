@@ -14,7 +14,7 @@
     # Shared image builder. Every image gets the same story:
     # non-root (UID 1000), a read-only /nix/store, and writable dirs
     # that the kro Application mounts PVCs over at runtime.
-    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ] }:
+    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null }:
     pkgs.dockerTools.buildLayeredImage {
       # Placeholder owner (lowercase — docker rejects uppercase repos);
       # CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
@@ -53,7 +53,7 @@
         User = "1000:1000";
         ExposedPorts = { "${toString port}/tcp" = { }; };
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
-        WorkingDir = if volumes == [ ] then "/" else builtins.head volumes;
+        WorkingDir = if workdir != null then workdir else (if volumes == [ ] then "/" else builtins.head volumes);
         Cmd = (if cmd != null then cmd else [ (lib.getExe pkg) ]) ++ cmdArgs;
         Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive ]}" ] ++ extraEnv;
         Labels = {
@@ -99,6 +99,9 @@
         pkg = pkgs.kavita; # 0.9.1.4
         port = 5000;
         volumes = [ "/kavita/config" "/media" ];
+        # Kavita's config dir is <cwd>/config, so cwd must be the parent of the
+        # /kavita/config mount (matches the existing PVC / official layout).
+        workdir = "/kavita";
       };
       jellyfin = {
         pkg = pkgs.jellyfin; # 12.2
@@ -112,6 +115,8 @@
         volumes = [ "/hister/search-data" "/hister/data" ];
         # `hister` with no args is the client CLI; `listen` starts the server.
         cmdArgs = [ "listen" ];
+        # config.yml lives in /hister/data and is read from cwd (./config.yml).
+        workdir = "/hister/data";
         extraEnv = [ "HISTER__SERVER__ADDRESS=0.0.0.0:4433" "HISTER_DATA_DIR=/hister/search-data" ];
       };
       writefreely = {
@@ -179,6 +184,7 @@
               extraEnv = apps.${name}.extraEnv or [ ];
               cmd = apps.${name}.cmd or null;
               extraContents = apps.${name}.extraContents or [ ];
+              workdir = apps.${name}.workdir or null;
             };
           }) (builtins.attrNames apps)));
   };
