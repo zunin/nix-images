@@ -63,7 +63,7 @@ jobs:
           APP: ${{ matrix.app }}
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          LOCALTAG="ghcr.io/OWNER/$APP:$version"
+          LOCALTAG="ghcr.io/owner/$APP:$version"
           BASETAG="ghcr.io/${{ github.repository_owner }}/$APP"
           docker tag "$LOCALTAG" "$BASETAG:$version"
           docker tag "$LOCALTAG" "$BASETAG:$version-${{ github.run_number }}"

@@ -1,7 +1,7 @@
 # nix-images
 
 Builds OCI images for the home cluster from **nixpkgs**, using `dockerTools`.
-The fleet repo (`fleet/`) consumes these via `ghcr.io/OWNER/<app>:<version>`.
+The fleet repo (`fleet/`) consumes these via `ghcr.io/zunin/<app>:<version>`.
 
 The whole point: one `nixos-unstable` revision drives **both** the base OS
 (glibc, openssl, node, ffmpeg) and every app version. A renovate merge of a
@@ -51,7 +51,7 @@ nix build .#packages.x86_64-linux.audiobookshelf-image
 docker load < result
 mkdir -p /tmp/abconfig /tmp/abaudio && sudo chown 1000:1000 /tmp/abconfig /tmp/abaudio
 docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
-  ghcr.io/OWNER/audiobookshelf:2.37.1
+  ghcr.io/zunin/audiobookshelf:2.37.1
 ```
 
 ## Pilot checklist (audiobookshelf → navidrome)
@@ -68,5 +68,5 @@ docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
 - App-version timing rides nixpkgs (`unstable` ≈ days–weeks behind upstream).
 - Some nixpkgs packages are "raw files" (e.g. wallabag) and need a wrapper
   image in `flakes` — so far both apps here are straight `dockerTools` jobs.
-- The image `name` uses the `OWNER` placeholder; CI retags to the GitHub repo
+- The image `name` uses the `owner` placeholder; CI retags to the GitHub repo
   owner. Update it if you build/push outside CI.

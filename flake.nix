@@ -15,8 +15,9 @@
     # that the kro Application mounts PVCs over at runtime.
     mkImage = { pname, pkg, port ? 80, volumes ? [ ] }:
     pkgs.dockerTools.buildLayeredImage {
-      # Placeholder owner; CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
-      name = "ghcr.io/OWNER/${pname}";
+      # Placeholder owner (lowercase — docker rejects uppercase repos);
+      # CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
+      name = "ghcr.io/owner/${pname}";
       # The mutable app-version tag. CI additionally publishes an immutable
       # <version>-<run_number> tag (base/OS patches keep <version>, new digests).
       tag = pkg.version;
@@ -27,10 +28,11 @@
 
       # Make the writable dirs exist and belong to the image user.
       # In-cluster the PVCs overlay these; ownership only matters for `docker run`.
-      # Runs inside fakeroot (buildLayeredImage has no runAsRoot).
+      # Runs under fakeroot with cwd = the image root, hence RELATIVE paths
+      # (absolute paths would hit the read-only build sandbox root).
       fakeRootCommands = ''
-        mkdir -p ${builtins.concatStringsSep " " volumes}
-        chown -R 1000:1000 ${builtins.concatStringsSep " " volumes}
+        mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
+        chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
       '';
 
       # Fixed timestamp -> reproducible digests.
@@ -44,7 +46,7 @@
         Cmd = [ (pkgs.lib.getExe pkg) ];
         Labels = {
           "org.opencontainers.image.title" = pname;
-          "org.opencontainers.image.source" = "https://github.com/USER/nix-images";
+          "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
           "org.opencontainers.image.version" = pkg.version;
         };
       };
