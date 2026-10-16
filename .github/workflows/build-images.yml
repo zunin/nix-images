@@ -46,6 +46,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -78,3 +79,37 @@ jobs:
           docker tag "$LOCALTAG" "$BASETAG:$version-${{ github.run_number }}"
           docker push "$BASETAG:$version"
           docker push "$BASETAG:$version-${{ github.run_number }}"
+
+      # nix SBOM (sbomnix flakeref -> CPEs) attached to GHCR so GitHub shows it
+      # on the package page, and scanned with Grype (CPE/NVD, unlike Trivy which
+      # can't map the pkg:nix ecosystem) into SARIF for the Security tab.
+      - name: Generate + attach SBOM, Grype -> SARIF
+        if: github.event_name == 'push'
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          REV=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
+          NIXPKGS="github:NixOS/nixpkgs/$REV"
+          NIX="nix --extra-experimental-features nix-command flakes run $NIXPKGS#"
+
+          # 1. SBOM with nixpkgs metadata (CPEs) — flakeref target, not a store path.
+          $NIX sbomnix -- --cdx sbom.cdx.json "$NIXPKGS#$APP"
+
+          # 2. Attach to GHCR as an OCI artifact named <digest>_cyclonedx.json
+          #    (GitHub's convention for displaying SBOMs on the package page).
+          BASETAG="ghcr.io/${{ github.repository_owner }}/$APP"
+          DIGEST=$(docker manifest inspect -v "$BASETAG:$version-${{ github.run_number }}" \
+            | jq -r '.[0].Descriptor.digest | sub("sha256:"; "")')
+          echo "${{ secrets.GITHUB_TOKEN }}" | $NIX oras -- login ghcr.io -u "${{ github.actor }}" --password-stdin
+          $NIX oras -- push "$BASETAG:${DIGEST}_cyclonedx.json" sbom.cdx.json
+
+          # 3. Scan the SBOM with Grype and emit SARIF (non-zero exit when vulns
+          #    exist, so don't fail the build on findings).
+          $NIX grype -- -q -o sarif --file grype.sarif sbom:sbom.cdx.json || true
+
+      - name: Upload Grype SARIF to Security tab
+        if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype.sarif
+          category: grype-${{ matrix.app }}
