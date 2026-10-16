@@ -13,7 +13,7 @@
     # Shared image builder. Every image gets the same story:
     # non-root (UID 1000), a read-only /nix/store, and writable dirs
     # that the kro Application mounts PVCs over at runtime.
-    mkImage = { pname, pkg, port ? 80, volumes ? [ ] }:
+    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ] }:
     pkgs.dockerTools.buildLayeredImage {
       # Placeholder owner (lowercase — docker rejects uppercase repos);
       # CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
@@ -43,7 +43,8 @@
         ExposedPorts = { "${toString port}/tcp" = { }; };
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = builtins.head volumes;
-        Cmd = [ (pkgs.lib.getExe pkg) ];
+        Cmd = [ (pkgs.lib.getExe pkg) ] ++ cmdArgs;
+        Env = extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
@@ -59,6 +60,12 @@
         pkg = pkgs.audiobookshelf; # nixpkgs: 2.37.1
         port = 80;                 # audiobook-application.yaml (container.port)
         volumes = [ "/config" "/audiobooks" "/metadata" "/podcasts" ];
+        # The nixpkgs wrapper ignores PORT/CONFIG_PATH/METADATA_PATH env and only
+        # reads CLI flags (defaults: 8000, $(pwd)/config, $(pwd)/metadata), so we
+        # pass them explicitly to match the Application CR / official image.
+        cmdArgs = [ "--port" "80" "--host" "0.0.0.0" "--config" "/config" "--metadata" "/metadata" ];
+        # Serve at the root (nixpkgs default is a /audiobookshelf subpath).
+        extraEnv = [ "ROUTER_BASE_PATH=/" ];
       };
       navidrome = {
         pkg = pkgs.navidrome;      # nixpkgs: 0.64.2
@@ -78,6 +85,8 @@
               pkg = apps.${name}.pkg;
               port = apps.${name}.port;
               volumes = apps.${name}.volumes;
+              cmdArgs = apps.${name}.cmdArgs or [ ];
+              extraEnv = apps.${name}.extraEnv or [ ];
             };
           }) (builtins.attrNames apps)));
   };

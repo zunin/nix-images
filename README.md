@@ -66,7 +66,14 @@ docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
 ## Caveats
 
 - App-version timing rides nixpkgs (`unstable` ≈ days–weeks behind upstream).
+- Some nixpkgs wrappers ignore env and only read CLI flags — pass the correct
+  invocation via an app's `cmdArgs`/`extraEnv` in `flake.nix`. audiobookshelf is
+  the example: `--port 80 --config /config --metadata /metadata` +
+  `ROUTER_BASE_PATH=/` (defaults would be 8000, nested config, subpath).
+- Size varies wildly by closure: audiobookshelf pulls nixpkgs' `ffmpeg-full`
+  (gtk/gstreamer/mesa/opencv) → ~1.9 GB, vs ~124 MB official. Overriding to
+  `ffmpeg-headless` needs a local wrapper (the nixpkgs package hardcodes it).
 - Some nixpkgs packages are "raw files" (e.g. wallabag) and need a wrapper
-  image in `flakes` — so far both apps here are straight `dockerTools` jobs.
+  image — so far both apps here are straight `dockerTools` jobs.
 - The image `name` uses the `owner` placeholder; CI retags to the GitHub repo
   owner. Update it if you build/push outside CI.
