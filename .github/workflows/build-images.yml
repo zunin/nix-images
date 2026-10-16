@@ -107,7 +107,7 @@ jobs:
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
           nix run "$NIXPKGS#grype" -- \
-            --vex openvex.json --only-fixed -q \
+            --vex openvex.json --sort-by risk -q \
             -o sarif=grype.sarif -o json=grype.json \
             "sbom:sbom.cdx.json" || true
           # Enrich the SARIF so each alert is self-describing: Grype leaves the
@@ -129,7 +129,7 @@ jobs:
               ))
           ' grype.sarif > grype.fixed.sarif
           mv grype.fixed.sarif grype.sarif
-          jq -r '"grype: \(.matches|length) findings (fixed-only, VEX applied) | KEV: \([.matches[]|select(.vulnerability.knownExploited)]|length)"' grype.json 2>/dev/null || true
+          jq -r '([.matches[]]|length) as $n | ([.matches[]|select(.vulnerability.knownExploited)]|length) as $k | ([.matches[]|select((.vulnerability.epss // [])|(map(.epss)|max // 0) >= 0.1)]|length) as $e | "grype: \($n) exposure findings (VEX applied) | KEV: \($k) | EPSS>=0.1: \($e)"' grype.json 2>/dev/null || true
 
       # GitHub-native attestations (sigstore-signed, OIDC): the SBOM and the
       # build provenance are bound to the image digest and pushed to GHCR, so

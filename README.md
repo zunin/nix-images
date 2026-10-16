@@ -89,9 +89,10 @@ packages. Two mechanisms keep the Security tab honest:
   which Grype matches across versions (CPE product ids do NOT match), so entries
   survive rev bumps. Add suppressions here (reviewable in git) instead of
   dismissing alerts in the UI.
-- **`--only-fixed`** — drops findings with no known fix, leaving only what a
-  `flake.lock` rev bump could actually resolve.
+- **Exposure view** (not an action-queue): we keep *all* post-VEX findings,
+  including real-but-unfixable ones, sorted by `risk` (EPSS/KEV-aware). The log
+  line reports total + KEV + high-EPSS counts. (`--only-fixed` would instead
+  show just the upgradeable subset — deliberately not used.)
 
 App-layer findings (npm/go/python, from lockfiles/buildinfo) are reliable; the
-OS/closure CPE layer is the noisy part. Triage by `knownExploited` (KEV) / EPSS
-(Grype's default sort is `risk`).
+OS/closure CPE layer is the noisy part. Triage by `knownExploited` (KEV) / EPSS.
