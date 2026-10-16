@@ -15,16 +15,30 @@ on:
     branches: [main]
 
 jobs:
+  # Compute the app list, because a job-level `if` cannot reference `matrix`.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.set.outputs.apps }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'apps=["audiobookshelf","navidrome"]' >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        app: [audiobookshelf, navidrome]
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
     permissions:
       contents: read
       packages: write
-    if: ${{ github.event_name != 'workflow_dispatch' || matrix.app == inputs.app }}
     steps:
       - uses: actions/checkout@v4
 
