@@ -101,7 +101,12 @@ jobs:
           DIGEST=$(docker manifest inspect -v "$BASETAG:$version-${{ github.run_number }}" \
             | jq -r 'if type=="array" then .[0] else . end | .Descriptor.digest | sub("sha256:"; "")')
           echo "${{ secrets.GITHUB_TOKEN }}" | nix run "$NIXPKGS#oras" -- login ghcr.io -u "${{ github.actor }}" --password-stdin
-          nix run "$NIXPKGS#oras" -- push "$BASETAG:${DIGEST}_cyclonedx.json" sbom.cdx.json
+          # CycloneDX media type is what GitHub keys on to render the SBOM;
+          # without it the artifact is a generic blob shown as a plain tag.
+          nix run "$NIXPKGS#oras" -- push \
+            --artifact-type application/vnd.cyclonedx+json \
+            "$BASETAG:${DIGEST}_cyclonedx.json" \
+            sbom.cdx.json:application/vnd.cyclonedx+json
 
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
