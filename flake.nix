@@ -23,14 +23,27 @@
       # <version>-<run_number> tag (base/OS patches keep <version>, new digests).
       tag = pkg.version;
 
-      # The package's full runtime closure is included automatically.
-      contents = [ pkg ] ++ extraContents;
+      # The package's full runtime closure, plus coreutils/bash so apps that
+      # shell out to `uname`/`env`/`sh` don't crash (distro-less image).
+      contents = [ pkg ] ++ extraContents ++ [ pkgs.coreutils pkgs.bashInteractive ];
 
       # Make the writable dirs exist and belong to the image user.
       # Runs under fakeroot with cwd = the image root, hence RELATIVE paths.
-      fakeRootCommands = lib.optionalString (volumes != [ ]) ''
-        mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
-        chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
+      # /etc/passwd entry so uid 1000 resolves — .NET apps (kavita) call
+      # get_UserName() and crash without it. Plus the writable volume dirs.
+      fakeRootCommands = ''
+        mkdir -p ./etc
+        printf 'nixapp:x:1000:1000:nix app:/:/sbin/nologin\n' > ./etc/passwd
+        printf 'nixapp:x:1000:\n' > ./etc/group
+        # minimal FHS bits — some apps spawn uname/env/sh
+        mkdir -p ./bin ./usr/bin
+        ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/sh
+        ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/bash
+        ln -sf ${pkgs.coreutils}/bin/env ./usr/bin/env
+        ${lib.optionalString (volumes != [ ]) ''
+          mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
+          chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
+        ''}
       '';
 
       # Fixed timestamp -> reproducible digests.
@@ -42,7 +55,7 @@
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = if volumes == [ ] then "/" else builtins.head volumes;
         Cmd = (if cmd != null then cmd else [ (lib.getExe pkg) ]) ++ cmdArgs;
-        Env = extraEnv;
+        Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive ]}" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
@@ -62,7 +75,7 @@
     mkPhpServer = { name, docroot, port, dirs ? [ ], seed ? [ ] }:
       pkgs.writeShellScriptBin name ''
         set -eu
-        ${lib.concatMapStringsSep "\n" (d: "mkdir -p ${d}") dirs}
+        ${lib.concatMapStringsSep "\n" (d: "${pkgs.coreutils}/bin/mkdir -p ${d}") dirs}
         ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then ${pkgs.coreutils}/bin/cp -a ${s.from} ${s.to}; fi") seed}
         exec ${phpWithExts}/bin/php -S 0.0.0.0:${toString port} -t ${docroot}
       '';
@@ -97,6 +110,8 @@
         pkg = pkgs.hister; # 0.20.0
         port = 4433;
         volumes = [ "/hister/search-data" "/hister/data" ];
+        # `hister` with no args is the client CLI; `listen` starts the server.
+        cmdArgs = [ "listen" ];
         extraEnv = [ "HISTER__SERVER__ADDRESS=0.0.0.0:4433" "HISTER_DATA_DIR=/hister/search-data" ];
       };
       writefreely = {
