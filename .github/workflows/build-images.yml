@@ -4,12 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: "App to build (audiobookshelf | navidrome)"
+        description: "App to build"
         type: choice
         default: audiobookshelf
         options:
           - audiobookshelf
           - navidrome
+          - writefreely
+          - freshrss
   pull_request:
   push:
     branches: [main]
@@ -26,7 +28,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'apps=["audiobookshelf","navidrome"]' >> "$GITHUB_OUTPUT"
+            echo 'apps=["audiobookshelf","navidrome","writefreely","freshrss"]' >> "$GITHUB_OUTPUT"
           fi
 
   build:
