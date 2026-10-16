@@ -77,3 +77,21 @@ docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
   image — so far both apps here are straight `dockerTools` jobs.
 - The image `name` uses the `owner` placeholder; CI retags to the GitHub repo
   owner. Update it if you build/push outside CI.
+
+## CVE accuracy (Grype)
+
+Grype matches nix packages against NVD by CPE, which is noisy: many NVD entries
+have unbounded (`*`) version ranges or are disputed, so they match modern nix
+packages. Two mechanisms keep the Security tab honest:
+
+- **`openvex.json`** (OpenVEX) — `not_affected` statements with justifications,
+  fed to Grype via `--vex`. Products use versionless purls (`pkg:nix/<name>`),
+  which Grype matches across versions (CPE product ids do NOT match), so entries
+  survive rev bumps. Add suppressions here (reviewable in git) instead of
+  dismissing alerts in the UI.
+- **`--only-fixed`** — drops findings with no known fix, leaving only what a
+  `flake.lock` rev bump could actually resolve.
+
+App-layer findings (npm/go/python, from lockfiles/buildinfo) are reliable; the
+OS/closure CPE layer is the noisy part. Triage by `knownExploited` (KEV) / EPSS
+(Grype's default sort is `risk`).

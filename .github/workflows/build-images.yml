@@ -106,7 +106,10 @@ jobs:
 
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
-          nix run "$NIXPKGS#grype" -- -q -o sarif --file grype.sarif sbom:sbom.cdx.json || true
+          nix run "$NIXPKGS#grype" -- \
+            --vex openvex.json --only-fixed -q \
+            -o sarif=grype.sarif -o json=grype.json \
+            "sbom:sbom.cdx.json" || true
           # Enrich the SARIF so each alert is self-describing: Grype leaves the
           # artifactLocation.uri empty (rejected by code scanning) and the table
           # "Location" cell blank. Prefix app + fill in the image + location.
@@ -126,7 +129,7 @@ jobs:
               ))
           ' grype.sarif > grype.fixed.sarif
           mv grype.fixed.sarif grype.sarif
-          jq -r '"grype findings: \(.runs[0].results | length)"' grype.sarif 2>/dev/null || true
+          jq -r '"grype: \(.matches|length) findings (fixed-only, VEX applied) | KEV: \([.matches[]|select(.vulnerability.knownExploited)]|length)"' grype.json 2>/dev/null || true
 
       # GitHub-native attestations (sigstore-signed, OIDC): the SBOM and the
       # build provenance are bound to the image digest and pushed to GHCR, so
@@ -160,5 +163,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: grype-${{ matrix.app }}-sarif
-          path: grype.sarif
+          path: |
+            grype.sarif
+            grype.json
           if-no-files-found: ignore
