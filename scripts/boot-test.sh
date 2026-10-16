@@ -13,9 +13,9 @@ CASES=(
 "jellyfin|12.2|8096|19004|/health|/config /media /cache|"
 "hister|0.20.0|4433|19005|/api/config|/hister/search-data /hister/data|-e HISTER__SERVER__BASE_URL=http://localhost:19005"
 "writefreely|0.17.2|8080|19006|/|/data|"
-"freshrss|1.30.1|80|19007|/|/data /extensions|"
-"grocy|4.7.1|80|19008|/|/config|"
-"wallabag|2.6.14|80|19009|/|/config|"
+"freshrss|1.30.1|8080|19007|/|/data /extensions|"
+"grocy|4.7.1|8080|19008|/|/config|"
+"wallabag|2.6.14|8080|19009|/|/config|"
 )
 
 printf "%-14s %-6s %-8s %-9s %s\n" APP HTTP RUNNING USER HEALTH
