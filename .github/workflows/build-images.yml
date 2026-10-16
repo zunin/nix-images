@@ -53,8 +53,10 @@ jobs:
         env:
           APP: ${{ matrix.app }}
         run: |
-          echo "archive=$(nix build --no-link --print-out-paths .#packages.x86_64-linux.$APP-image)" >> "$GITHUB_ENV"
-          echo "version=$(nix eval --raw .#packages.x86_64-linux.$APP.version)" >> "$GITHUB_ENV"
+          archive="$(nix build --no-link --print-out-paths .#packages.x86_64-linux.$APP-image)"
+          version="$(nix eval --raw .#packages.x86_64-linux.$APP.version)"
+          echo "archive=$archive" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_ENV"
           docker load < "$archive"
 
       - name: Push to GHCR (mutable + immutable tags)
