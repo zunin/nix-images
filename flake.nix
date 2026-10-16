@@ -9,6 +9,7 @@
   let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
+    lib = pkgs.lib;
 
     # Shared image builder. Every image gets the same story:
     # non-root (UID 1000), a read-only /nix/store, and writable dirs
@@ -22,15 +23,12 @@
       # <version>-<run_number> tag (base/OS patches keep <version>, new digests).
       tag = pkg.version;
 
-      # The package's full runtime closure (ffmpeg, node, native libs) is
-      # included automatically. No base image to maintain.
+      # The package's full runtime closure is included automatically.
       contents = [ pkg ] ++ extraContents;
 
       # Make the writable dirs exist and belong to the image user.
-      # In-cluster the PVCs overlay these; ownership only matters for `docker run`.
-      # Runs under fakeroot with cwd = the image root, hence RELATIVE paths
-      # (absolute paths would hit the read-only build sandbox root).
-      fakeRootCommands = pkgs.lib.optionalString (volumes != [ ]) ''
+      # Runs under fakeroot with cwd = the image root, hence RELATIVE paths.
+      fakeRootCommands = lib.optionalString (volumes != [ ]) ''
         mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
         chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
       '';
@@ -43,7 +41,7 @@
         ExposedPorts = { "${toString port}/tcp" = { }; };
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = if volumes == [ ] then "/" else builtins.head volumes;
-        Cmd = (if cmd != null then cmd else [ (pkgs.lib.getExe pkg) ]) ++ cmdArgs;
+        Cmd = (if cmd != null then cmd else [ (lib.getExe pkg) ]) ++ cmdArgs;
         Env = extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
@@ -53,52 +51,106 @@
       };
     };
 
-    # One entry per app. `pkg` comes from nixpkgs; ports/volumes must match the
-    # kro Application CR (audiobook-application.yaml / music-application.yaml).
+    # --- PHP support ---------------------------------------------------------
+    # PHP web apps (grocy, wallabag, freshrss) have no runnable binary. We serve
+    # them with PHP's built-in server. This is a PILOT/analysis setup; a
+    # production cutover wants php-fpm + a real webserver.
+    phpWithExts = pkgs.php.withExtensions ({ enabled, all }:
+      enabled ++ (with all; [ pdo_sqlite sqlite3 intl gd curl zip exif opcache ]));
+
+    # Small entrypoint: create writable dirs, seed a config once, run php -S.
+    mkPhpServer = { name, docroot, port, dirs ? [ ], seed ? [ ] }:
+      pkgs.writeShellScriptBin name ''
+        set -eu
+        ${lib.concatMapStringsSep "\n" (d: "mkdir -p ${d}") dirs}
+        ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then ${pkgs.coreutils}/bin/cp -a ${s.from} ${s.to}; fi") seed}
+        exec ${phpWithExts}/bin/php -S 0.0.0.0:${toString port} -t ${docroot}
+      '';
+
+    # One entry per app: ports/volumes/env must match the fleet manifests.
     apps = {
       audiobookshelf = {
-        pkg = pkgs.audiobookshelf; # nixpkgs: 2.37.1
-        port = 80;                 # audiobook-application.yaml (container.port)
+        pkg = pkgs.audiobookshelf; # 2.37.1
+        port = 80;
         volumes = [ "/config" "/audiobooks" "/metadata" "/podcasts" ];
-        # The nixpkgs wrapper ignores PORT/CONFIG_PATH/METADATA_PATH env and only
-        # reads CLI flags (defaults: 8000, $(pwd)/config, $(pwd)/metadata), so we
-        # pass them explicitly to match the Application CR / official image.
+        # wrapper ignores PORT/CONFIG_PATH/METADATA_PATH env; only CLI flags.
         cmdArgs = [ "--port" "80" "--host" "0.0.0.0" "--config" "/config" "--metadata" "/metadata" ];
-        # Serve at the root (nixpkgs default is a /audiobookshelf subpath).
         extraEnv = [ "ROUTER_BASE_PATH=/" ];
       };
       navidrome = {
-        pkg = pkgs.navidrome;      # nixpkgs: 0.64.2
-        port = 4533;               # music-application.yaml (container.port / ND_PORT)
+        pkg = pkgs.navidrome; # 0.64.2
+        port = 4533;
         volumes = [ "/data" "/music" ];
       };
-      # spoolman — BLOCKED at this nixpkgs rev: `python3.12-anyio-4.14.2` is not
-      # in cache.nixos.org, so it builds from source and its test suite fails in
-      # the sandbox ("5 failed, 2595 passed"), which blocks spoolman either here
-      # or on CI. Re-enable on a rev bump, or carry a doCheck=false override.
-      # spoolman = {
-      #   pkg = pkgs.spoolman;     # nixpkgs: 0.23.1
-      #   port = 7912;             # spoolman.deployment.yaml (SPOOLMAN_PORT)
-      #   volumes = [ ];           # uses external postgres, no local data dir
-      # };
+      kavita = {
+        pkg = pkgs.kavita; # 0.9.1.4
+        port = 5000;
+        volumes = [ "/kavita/config" "/media" ];
+      };
+      jellyfin = {
+        pkg = pkgs.jellyfin; # 12.2
+        port = 8096;
+        volumes = [ "/config" "/media" "/cache" ];
+        cmdArgs = [ "--datadir" "/config" "--configdir" "/config/config" "--cachedir" "/cache" "--logdir" "/config/log" ];
+      };
+      hister = {
+        pkg = pkgs.hister; # 0.20.0
+        port = 4433;
+        volumes = [ "/hister/search-data" "/hister/data" ];
+        extraEnv = [ "HISTER__SERVER__ADDRESS=0.0.0.0:4433" "HISTER_DATA_DIR=/hister/search-data" ];
+      };
       writefreely = {
-        pkg = pkgs.writefreely;    # nixpkgs: 0.17.2
-        port = 8080;               # writefreely default server port
-        volumes = [ "/data" ];     # config.ini + data dir
+        pkg = pkgs.writefreely; # 0.17.2
+        port = 8080;
+        volumes = [ "/data" ];
       };
       freshrss = {
-        pkg = pkgs.freshrss;       # nixpkgs: 1.30.1 (PHP web app, no mainProgram)
+        pkg = pkgs.freshrss; # 1.30.1 (webroot: p/) — DATA_PATH env; web installer seeds config.
         port = 80;
         volumes = [ "/data" "/extensions" ];
-        # PHP app: no binary, so serve it with PHP's built-in server.
-        # (Analysis/pilot image; a production setup wants php-fpm + a webserver.)
-        extraContents = [ pkgs.php ];
-        cmd = [ "${pkgs.php}/bin/php" "-S" "0.0.0.0:80" "-t" "${pkgs.freshrss}" ];
+        extraContents = [ phpWithExts ];
+        extraEnv = [ "DATA_PATH=/data" ];
+        cmd = [ "${mkPhpServer { name = "freshrss-server"; docroot = "${pkgs.freshrss}/p"; port = 80; dirs = [ "/data" "/extensions" ]; }}/bin/freshrss-server" ];
       };
+      grocy = {
+        pkg = pkgs.grocy; # 4.7.1 (webroot: public/)
+        port = 80;
+        volumes = [ "/config" ];
+        extraContents = [ phpWithExts ];
+        extraEnv = [
+          "GROCY_CONFIG_FILE=/config/config.php"
+          "GROCY_DB_FILE=/config/grocy.db"
+          "GROCY_STORAGE_DIR=/config/storage"
+          "GROCY_PLUGIN_DIR=/config/plugins"
+          "GROCY_CACHE_DIR=/config/viewcache"
+        ];
+        cmd = [ "${mkPhpServer {
+          name = "grocy-server";
+          docroot = "${pkgs.grocy}/public";
+          port = 80;
+          dirs = [ "/config" "/config/storage" "/config/plugins" "/config/viewcache" ];
+          seed = [ { from = "${pkgs.grocy}/config-dist.php"; to = "/config/config.php"; } ];
+        }}/bin/grocy-server" ];
+      };
+      wallabag = {
+        pkg = pkgs.wallabag; # 2.6.14 (webroot: web/) — WALLABAG_DATA env.
+        port = 80;
+        volumes = [ "/config" ];
+        extraContents = [ phpWithExts ];
+        extraEnv = [ "WALLABAG_DATA=/config" ];
+        cmd = [ "${mkPhpServer {
+          name = "wallabag-server";
+          docroot = "${pkgs.wallabag}/web";
+          port = 80;
+          dirs = [ "/config" ];
+          seed = [ { from = "${pkgs.wallabag}/app"; to = "/config/app"; } ];
+        }}/bin/wallabag-server" ];
+      };
+      # spoolman — BLOCKED: python3.12-anyio-4.14.2 uncached + failing tests at
+      # this rev. Re-enable on a rev bump or with a doCheck=false override.
+      # spoolman = { pkg = pkgs.spoolman; port = 7912; volumes = [ ]; };
     };
   in {
-    # `.#audiobookshelf` = the nixpkgs package (so CI can read `.version`),
-    # `.#audiobookshelf-image` = the runnable OCI archive for `docker load`.
     packages.${system} =
       (builtins.mapAttrs (name: a: a.pkg) apps)
       // (builtins.listToAttrs (builtins.map (name: {

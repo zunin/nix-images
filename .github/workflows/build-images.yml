@@ -10,8 +10,13 @@ on:
         options:
           - audiobookshelf
           - navidrome
+          - kavita
+          - jellyfin
+          - hister
           - writefreely
           - freshrss
+          - grocy
+          - wallabag
   pull_request:
   push:
     branches: [main]
@@ -28,7 +33,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'apps=["audiobookshelf","navidrome","writefreely","freshrss"]' >> "$GITHUB_OUTPUT"
+            echo 'apps=["audiobookshelf","navidrome","kavita","jellyfin","hister","writefreely","freshrss","grocy","wallabag"]' >> "$GITHUB_OUTPUT"
           fi
 
   build:
