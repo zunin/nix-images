@@ -112,12 +112,24 @@ jobs:
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
           nix run "$NIXPKGS#grype" -- -q -o sarif --file grype.sarif sbom:sbom.cdx.json || true
-          # SBOM results carry an empty artifactLocation.uri, which GitHub code
-          # scanning rejects; force a non-empty URI so the upload is accepted.
-          jq '(.runs[0].results // []) as $r
-              | .runs[0].results = ($r | map(
-                  .locations = [{ physicalLocation: { artifactLocation: { uri: "sbom.cdx.json" } } }]
-                ))' grype.sarif > grype.fixed.sarif
+          # Enrich the SARIF so each alert is self-describing: Grype leaves the
+          # artifactLocation.uri empty (rejected by code scanning) and the table
+          # "Location" cell blank. Prefix app + fill in the image + location.
+          jq --arg app "$APP" --arg image "$BASETAG:$version" '
+            (.runs[0].tool.driver.rules // []) as $rules
+            | .runs[0].tool.driver.rules = ($rules | map(
+                .shortDescription.text = "[\($app)] " + .shortDescription.text
+                | (if .help.markdown then
+                     .help.markdown = (.help.markdown
+                       | gsub("\\| nix +\\| +\\| nvd:cpe"; "| nix  | \($app)  | nvd:cpe")
+                       | . + "\n**Image:** `\($image)`\n")
+                   else . end)
+              ))
+            | .runs[0].results = ((.runs[0].results // []) | map(
+                .message.text = "[\($app)] " + .message.text
+                | .locations = [{ physicalLocation: { artifactLocation: { uri: "\($app)/sbom.cdx.json" }, region: { startLine: 1, startColumn: 1 } } }]
+              ))
+          ' grype.sarif > grype.fixed.sarif
           mv grype.fixed.sarif grype.sarif
           jq -r '"grype findings: \(.runs[0].results | length)"' grype.sarif 2>/dev/null || true
 
