@@ -1,0 +1,57 @@
+name: build-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "App to build (audiobookshelf | navidrome)"
+        type: choice
+        default: audiobookshelf
+        options:
+          - audiobookshelf
+          - navidrome
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [audiobookshelf, navidrome]
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ github.event_name != 'workflow_dispatch' || matrix.app == inputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Ensure flake.lock exists (first run)
+        run: nix flake lock --accept-flake-config
+
+      - name: Build image archive
+        id: build
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          echo "archive=$(nix build --no-link --print-out-paths .#packages.x86_64-linux.$APP-image)" >> "$GITHUB_ENV"
+          echo "version=$(nix eval --raw .#packages.x86_64-linux.$APP.version)" >> "$GITHUB_ENV"
+          docker load < "$archive"
+
+      - name: Push to GHCR (mutable + immutable tags)
+        if: github.event_name == 'push'
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          LOCALTAG="ghcr.io/OWNER/$APP:$version"
+          BASETAG="ghcr.io/${{ github.repository_owner }}/$APP"
+          docker tag "$LOCALTAG" "$BASETAG:$version"
+          docker tag "$LOCALTAG" "$BASETAG:$version-${{ github.run_number }}"
+          docker push "$BASETAG:$version"
+          docker push "$BASETAG:$version-${{ github.run_number }}"
