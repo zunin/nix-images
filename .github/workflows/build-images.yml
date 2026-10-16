@@ -47,6 +47,7 @@ jobs:
       contents: read
       packages: write
       actions: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -111,9 +112,22 @@ jobs:
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
           nix run "$NIXPKGS#grype" -- -q -o sarif --file grype.sarif sbom:sbom.cdx.json || true
-          # SBOM results have no file locations, so GitHub code-scanning rejects
-          # them; summarize in the log and ship the SARIF as an artifact instead.
-          jq -r '(.runs[0].results | length) as $n | "grype findings: \($n)"' grype.sarif 2>/dev/null || true
+          # SBOM results carry no file paths; GitHub code scanning requires an
+          # artifactLocation, so inject one (standard workaround for SBOM scans).
+          jq '(.runs[0].results // []) as $r
+              | .runs[0].results = ($r | map(
+                  if ((.locations // []) | length) == 0
+                  then .locations = [{ physicalLocation: { artifactLocation: { uri: "sbom.cdx.json" } } }]
+                  else . end))' grype.sarif > grype.fixed.sarif
+          mv grype.fixed.sarif grype.sarif
+          jq -r '"grype findings: \(.runs[0].results | length)"' grype.sarif 2>/dev/null || true
+
+      - name: Upload Grype SARIF to Security tab
+        if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: grype.sarif
+          category: grype-${{ matrix.app }}
 
       - name: Upload Grype SARIF artifact
         if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
