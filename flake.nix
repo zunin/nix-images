@@ -276,7 +276,12 @@
           # DownloadImages saves to %kernel.project_dir%/web/assets/images
           # (= /config/web/assets/images via WALLABAG_DATA) and emits
           # /assets/images/... URLs; serve those from the PVC, not the store.
-          extraCaddy = "handle_path /assets/images/* { root * /config/web/assets/images; file_server }";
+          extraCaddy = ''
+            handle_path /assets/images/* {
+              root * /config/web/assets/images
+              file_server
+            }
+          '';
           volumes = [ "/config" ];
           dirs = [ "/config" ];
           seed = [ { from = "${pkgs.wallabag}/app"; to = "/config/app"; } ];
