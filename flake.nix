@@ -120,6 +120,10 @@
         pm.max_spare_servers = 3
         php_admin_value[error_log] = /proc/self/fd/2
         php_admin_flag[log_errors] = on
+        # Wallabag 2.6's vendor tree spews PHP 8.4 deprecations on every
+        # request; display would eat the output buffer and break redirects.
+        php_admin_value[display_errors] = off
+        php_admin_value[error_reporting] = E_ALL & ~E_DEPRECATED & ~E_STRICT
       '';
       caddyfile = pkgs.writeText "Caddyfile" ''
         {
