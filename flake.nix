@@ -93,7 +93,11 @@
     # them with php-fpm + Caddy (FastCGI) as a non-root user on an unprivileged
     # port (the fleet Service maps :80 -> the container port).
     mkPhpExts = php: php.withExtensions ({ enabled, all }:
-      enabled ++ (with all; [ pdo_sqlite sqlite3 intl gd curl zip exif opcache ]));
+      # filter by what the target PHP actually exposes: newer PHPs drop
+      # separate attrs for bundled extensions (php85 has no `opcache`).
+      enabled ++ (map (n: all.${n})
+        (lib.filter (n: all ? n)
+          [ "pdo_sqlite" "sqlite3" "intl" "gd" "curl" "zip" "exif" "opcache" ])));
     # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
     phpWithExts = mkPhpExts pkgs.php;
 
