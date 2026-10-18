@@ -123,7 +123,7 @@
         # Wallabag 2.6's vendor tree spews PHP 8.4 deprecations on every
         # request; display would eat the output buffer and break redirects.
         php_admin_value[display_errors] = off
-        php_admin_value[error_reporting] = E_ALL & ~E_DEPRECATED & ~E_STRICT
+        php_admin_value[error_reporting] = 22527 # E_ALL & ~E_DEPRECATED & ~E_STRICT
       '';
       caddyfile = pkgs.writeText "Caddyfile" ''
         {
