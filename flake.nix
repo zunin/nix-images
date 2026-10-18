@@ -101,7 +101,7 @@
     # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
     phpWithExts = mkPhpExts pkgs.php;
 
-    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null }:
+    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ] }:
     let
       fpmConf = pkgs.writeText "php-fpm.conf" ''
         [global]
@@ -140,6 +140,8 @@
         set -eu
         mkdir -p /tmp ${lib.concatStringsSep " " dirs}
         ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then cp -a ${s.from} ${s.to}; fi") seed}
+        # Store paths change on every nixpkgs rev, so re-point on every boot.
+        ${lib.concatMapStringsSep "\n" (s: "ln -sfn ${s.from} ${s.to}") symlinks}
         ${lib.optionalString (params != null) ''
         # Fleet-provided config files (e.g. a mounted Secret/ConfigMap dir)
         # overwrite the seeded dist copies after seeding.
@@ -285,6 +287,10 @@
           volumes = [ "/config" ];
           dirs = [ "/config" ];
           seed = [ { from = "${pkgs.wallabag}/app"; to = "/config/app"; } ];
+          # services.yml resolves bundle resources as ../../src/... relative to
+          # the seeded config dir (/config/app/config) — /config/src must
+          # exist. The store copy is read-only, so symlink it into the volume.
+          symlinks = [ { from = "${pkgs.wallabag}/src"; to = "/config/src"; } ];
           # parameters.yml comes from the fleet (Secret mounted at /params);
           # the dist copy is pdo_mysql and cannot boot.
           params = { from = "/params"; to = "/config/app/config"; };
