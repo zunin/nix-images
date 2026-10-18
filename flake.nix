@@ -14,7 +14,7 @@
     # Shared image builder. Every image gets the same story:
     # non-root (UID 1000), a read-only /nix/store, and writable dirs
     # that the kro Application mounts PVCs over at runtime.
-    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null }:
+    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null, extraPath ? [ ] }:
     pkgs.dockerTools.buildLayeredImage {
       # Placeholder owner (lowercase — docker rejects uppercase repos);
       # CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
@@ -55,7 +55,7 @@
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = if workdir != null then workdir else (if volumes == [ ] then "/" else builtins.head volumes);
         Cmd = (if cmd != null then cmd else [ (lib.getExe pkg) ]) ++ cmdArgs;
-        Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive ]}" ] ++ extraEnv;
+        Env = [ "PATH=${lib.makeBinPath ([ pkgs.coreutils pkgs.bashInteractive ] ++ extraPath)}" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
@@ -92,10 +92,12 @@
     # PHP web apps (grocy, wallabag, freshrss) have no runnable binary. Serve
     # them with php-fpm + Caddy (FastCGI) as a non-root user on an unprivileged
     # port (the fleet Service maps :80 -> the container port).
-    phpWithExts = pkgs.php.withExtensions ({ enabled, all }:
+    mkPhpExts = php: php.withExtensions ({ enabled, all }:
       enabled ++ (with all; [ pdo_sqlite sqlite3 intl gd curl zip exif opcache ]));
+    # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
+    phpWithExts = mkPhpExts pkgs.php;
 
-    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ] }:
+    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null }:
     let
       fpmConf = pkgs.writeText "php-fpm.conf" ''
         [global]
@@ -123,7 +125,10 @@
         :${toString port} {
           root * ${webroot}
           encode gzip
-          php_fastcgi unix//tmp/php-fpm.sock
+          php_fastcgi unix//tmp/php-fpm.sock {
+            index ${entryFile}
+          }
+          ${extraCaddy}
           file_server
         }
       '';
@@ -131,16 +136,21 @@
         set -eu
         mkdir -p /tmp ${lib.concatStringsSep " " dirs}
         ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then cp -a ${s.from} ${s.to}; fi") seed}
+        ${lib.optionalString (params != null) ''
+        # Fleet-provided config files (e.g. a mounted Secret/ConfigMap dir)
+        # overwrite the seeded dist copies after seeding.
+        if [ -d ${params.from} ]; then cp -f ${params.from}/* ${params.to}/ || true; fi
+        ''}
         export XDG_DATA_HOME=/tmp/caddy-data XDG_CONFIG_HOME=/tmp/caddy-config
         mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
-        ${phpWithExts}/bin/php-fpm -F -y ${fpmConf} &
+        ${php}/bin/php-fpm -F -y ${fpmConf} &
         exec ${pkgs.caddy}/bin/caddy run --config ${caddyfile} --adapter caddyfile
       '';
     in
     pkgs.dockerTools.buildLayeredImage {
       name = "ghcr.io/owner/${pname}";
       tag = pkg.version;
-      contents = [ pkg entrypoint phpWithExts pkgs.caddy ];
+      contents = [ pkg entrypoint php pkgs.caddy ];
       fakeRootCommands = ''
         mkdir -p ./etc
         printf 'nixapp:x:1000:1000:nix app:/:/sbin/nologin\n' > ./etc/passwd
@@ -209,6 +219,7 @@
         cmdArgs = [ "listen" ];
         # config.yml lives in /hister/data and is read from cwd (./config.yml).
         workdir = "/hister/data";
+        extraPath = [ pkgs.hister ]; # fleet crawler cronjob calls bare `hister`
         extraEnv = [ "HISTER__SERVER__ADDRESS=0.0.0.0:4433" "HISTER_DATA_DIR=/hister/search-data" ];
       };
       writefreely = {
@@ -235,6 +246,8 @@
           pkg = pkgs.grocy;
           webroot = "${pkgs.grocy}/public";
           port = 8080;
+          # grocy 4.7.1 hard-requires PHP >= 8.5 (boot-tested: 8.4 → HTTP 500).
+          php = mkPhpExts pkgs.php85;
           volumes = [ "/config" ];
           dirs = [ "/config" "/config/storage" "/config/plugins" "/config/viewcache" ];
           seed = [ { from = "${pkgs.grocy}/config-dist.php"; to = "/config/config.php"; } ];
@@ -254,9 +267,18 @@
           pkg = pkgs.wallabag;
           webroot = "${pkgs.wallabag}/web";
           port = 8080;
+          # web/ has no index.php — the prod front controller is app.php.
+          entryFile = "app.php";
+          # DownloadImages saves to %kernel.project_dir%/web/assets/images
+          # (= /config/web/assets/images via WALLABAG_DATA) and emits
+          # /assets/images/... URLs; serve those from the PVC, not the store.
+          extraCaddy = "handle_path /assets/images/* { root * /config/web/assets/images; file_server }";
           volumes = [ "/config" ];
           dirs = [ "/config" ];
           seed = [ { from = "${pkgs.wallabag}/app"; to = "/config/app"; } ];
+          # parameters.yml comes from the fleet (Secret mounted at /params);
+          # the dist copy is pdo_mysql and cannot boot.
+          params = { from = "/params"; to = "/config/app/config"; };
           extraEnv = [ "WALLABAG_DATA=/config" ];
         };
       };
@@ -279,6 +301,7 @@
               cmd = apps.${name}.cmd or null;
               extraContents = apps.${name}.extraContents or [ ];
               workdir = apps.${name}.workdir or null;
+              extraPath = apps.${name}.extraPath or [ ];
             });
           }) (builtins.attrNames apps)));
   };
