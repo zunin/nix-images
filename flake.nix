@@ -298,10 +298,18 @@
           volumes = [ "/config" ];
           dirs = [ "/config" ];
           seed = [ { from = "${pkgs.wallabag}/app"; to = "/config/app"; } ];
-          # services.yml resolves bundle resources as ../../src/... relative to
-          # the seeded config dir (/config/app/config) — /config/src must
-          # exist. The store copy is read-only, so symlink it into the volume.
-          symlinks = [ { from = "${pkgs.wallabag}/src"; to = "/config/src"; } ];
+          symlinks = [
+            # services.yml resolves bundle resources as ../../src/... relative
+            # to the seeded config dir (/config/app/config) — /config/src must
+            # exist.
+            { from = "${pkgs.wallabag}/src"; to = "/config/src"; }
+            # App-level template overrides (templates/bundles/FOSUserBundle/…)
+            # and translations resolve under %kernel.project_dir% (=/config);
+            # without them Symfony falls back to FOSUserBundle's bare layout
+            # (unstyled login page).
+            { from = "${pkgs.wallabag}/templates"; to = "/config/templates"; }
+            { from = "${pkgs.wallabag}/translations"; to = "/config/translations"; }
+          ];
           # parameters.yml comes from the fleet (Secret mounted at /params);
           # the dist copy is pdo_mysql and cannot boot.
           params = { from = "/params"; to = "/config/app/config"; };
