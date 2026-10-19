@@ -104,7 +104,7 @@
     # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
     phpWithExts = mkPhpExts pkgs.php;
 
-    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ] }:
+    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ], cacheDir ? null }:
     let
       fpmConf = pkgs.writeText "php-fpm.conf" ''
         [global]
@@ -157,6 +157,17 @@
         ''}
         export XDG_DATA_HOME=/tmp/caddy-data XDG_CONFIG_HOME=/tmp/caddy-config
         mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
+        ${lib.optionalString (cacheDir != null) ''
+        # Compiled containers (Symfony) bake in file-existence decisions and
+        # service wiring; a stale cache across image upgrades caused the
+        # FOSUserBundle bare layout long after templates/ were added. Drop the
+        # cache whenever the app's store path changes.
+        if [ -f ${cacheDir}/.image-marker ] && [ "$(cat ${cacheDir}/.image-marker)" != "${pkg}" ]; then
+          rm -rf ${cacheDir}
+        fi
+        mkdir -p ${cacheDir}
+        echo "${pkg}" > ${cacheDir}/.image-marker
+        ''}
         ${php}/bin/php-fpm -F -y ${fpmConf} &
         exec ${pkgs.caddy}/bin/caddy run --config ${caddyfile} --adapter caddyfile
       '';
@@ -314,6 +325,8 @@
           # the dist copy is pdo_mysql and cannot boot.
           params = { from = "/params"; to = "/config/app/config"; };
           extraEnv = [ "WALLABAG_DATA=/config" ];
+          # Symfony container/twig cache lives under project dir.
+          cacheDir = "/config/var/cache";
         };
       };
       # spoolman — BLOCKED: python3.12-anyio-4.14.2 uncached + failing tests at
