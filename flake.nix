@@ -144,7 +144,7 @@
       entrypoint = pkgs.writeShellScriptBin "${pname}-entrypoint" ''
         set -eu
         mkdir -p /tmp ${lib.concatStringsSep " " dirs}
-        ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then cp -a ${s.from} ${s.to}; fi") seed}
+        ${lib.concatMapStringsSep "\n" (s: "if [ ! -e ${s.to} ]; then cp -a ${s.from} ${s.to}; chmod -R u+w ${s.to}; fi") seed}
         # Store paths change on every nixpkgs rev, so re-point on every boot.
         ${lib.concatMapStringsSep "\n" (s: "ln -sfn ${s.from} ${s.to}") symlinks}
         ${lib.optionalString (params != null) ''
