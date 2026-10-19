@@ -25,7 +25,7 @@
 
       # The package's full runtime closure, plus coreutils/bash so apps that
       # shell out to `uname`/`env`/`sh` don't crash (distro-less image).
-      contents = [ pkg ] ++ extraContents ++ [ pkgs.coreutils pkgs.bashInteractive ];
+      contents = [ pkg ] ++ extraContents ++ [ pkgs.coreutils pkgs.bashInteractive pkgs.cacert ];
 
       # Make the writable dirs exist and belong to the image user.
       # Runs under fakeroot with cwd = the image root, hence RELATIVE paths.
@@ -40,6 +40,9 @@
         ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/sh
         ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/bash
         ln -sf ${pkgs.coreutils}/bin/env ./usr/bin/env
+        # CA bundle for outbound HTTPS (Go: SSL_CERT_FILE, OpenSSL: /etc/ssl/certs)
+        mkdir -p ./etc/ssl/certs
+        ln -sf ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt ./etc/ssl/certs/ca-bundle.crt
         ${lib.optionalString (volumes != [ ]) ''
           mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
           chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
@@ -55,7 +58,7 @@
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = if workdir != null then workdir else (if volumes == [ ] then "/" else builtins.head volumes);
         Cmd = (if cmd != null then cmd else [ (lib.getExe pkg) ]) ++ cmdArgs;
-        Env = [ "PATH=${lib.makeBinPath ([ pkgs.coreutils pkgs.bashInteractive ] ++ extraPath)}" ] ++ extraEnv;
+        Env = [ "PATH=${lib.makeBinPath ([ pkgs.coreutils pkgs.bashInteractive ] ++ extraPath)}" "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
@@ -161,7 +164,7 @@
     pkgs.dockerTools.buildLayeredImage {
       name = "ghcr.io/owner/${pname}";
       tag = pkg.version;
-      contents = [ pkg entrypoint php pkgs.caddy ];
+      contents = [ pkg entrypoint php pkgs.caddy pkgs.cacert ];
       fakeRootCommands = ''
         mkdir -p ./etc
         printf 'nixapp:x:1000:1000:nix app:/:/sbin/nologin\n' > ./etc/passwd
@@ -170,6 +173,9 @@
         ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/sh
         ln -sf ${pkgs.bashInteractive}/bin/bash ./bin/bash
         ln -sf ${pkgs.coreutils}/bin/env ./usr/bin/env
+        # CA bundle for outbound HTTPS (Go: SSL_CERT_FILE, OpenSSL: /etc/ssl/certs)
+        mkdir -p ./etc/ssl/certs
+        ln -sf ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt ./etc/ssl/certs/ca-bundle.crt
         mkdir -p ./tmp
         chown 1000:1000 ./tmp
         ${lib.optionalString (volumes != [ ]) ''
@@ -184,7 +190,7 @@
         Volumes = builtins.listToAttrs (map (v: { name = v; value = { }; }) volumes);
         WorkingDir = "/";
         Cmd = [ "${entrypoint}/bin/${pname}-entrypoint" ];
-        Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive phpWithExts pkgs.caddy ]}" ] ++ extraEnv;
+        Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive php pkgs.caddy ]}" "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
