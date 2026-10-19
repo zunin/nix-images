@@ -1,9 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  // Renovate's nix manager shells out to `nix flake update`; the stock
+  // renovate image has no nix binary (and no writable store), so flake.lock
+  // bumps are handled by .github/workflows/flake-update.yml instead.
   "nix": {
-    "enabled": true,
-    "labels": ["dependencies", "nixpkgs"],
-    "automerge": true
+    "enabled": false
   }
 }

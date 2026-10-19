@@ -1,0 +1,35 @@
+name: flake-update
+on:
+  schedule:
+    # Weekly nixpkgs bump lane. Renovate's nix manager cannot do this in
+    # the stock renovate image: it shells out to `nix flake update`, and
+    # the image has no nix binary (and its /nix/store is read-only).
+  - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Update flake.lock
+        run: nix flake update
+
+      - name: Open/update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore(deps): update flake.lock'
+          title: 'chore(deps): update flake.lock'
+          body: |
+            Scheduled `nix flake update` (renovate's nix manager needs a
+            nix binary, which the renovate image does not ship).
+          branch: chore/flake-lock
+          delete-branch: true
