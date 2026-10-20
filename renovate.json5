@@ -1,10 +1,23 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":automergeBranch",
+    ":disableRateLimiting",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":timezone(Europe/Copenhagen)",
+  ],
+  dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  suppressNotifications: [
+    "prEditedNotification",
+    "prIgnoreNotification",
+  ],
   // Renovate's nix manager shells out to `nix flake update`; the stock
   // renovate image has no nix binary (and no writable store), so flake.lock
   // bumps are handled by .github/workflows/flake-update.yml instead.
-  "nix": {
-    "enabled": false
-  }
+  nix: {
+    enabled: false,
+  },
 }
