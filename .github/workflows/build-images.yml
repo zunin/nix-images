@@ -51,10 +51,10 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@e50d5f73bfe71c2dd0aa4218de8f4afa59f8f81d # v16
 
       - name: Ensure flake.lock exists (first run)
         run: nix flake lock --accept-flake-config
@@ -136,7 +136,7 @@ jobs:
       # they show on the package page and verify with `gh attestation verify`.
       - name: Attest SBOM
         if: github.event_name == 'push'
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
           subject-digest: ${{ env.digest }}
@@ -145,7 +145,7 @@ jobs:
 
       - name: Attest build provenance
         if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
           subject-digest: ${{ env.digest }}
@@ -153,14 +153,14 @@ jobs:
 
       - name: Upload Grype SARIF to Security tab
         if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           sarif_file: grype.sarif
           category: grype-${{ matrix.app }}
 
       - name: Upload Grype SARIF artifact
         if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: grype-${{ matrix.app }}-sarif
           path: |
