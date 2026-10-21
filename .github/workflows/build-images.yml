@@ -136,7 +136,7 @@ jobs:
       # they show on the package page and verify with `gh attestation verify`.
       - name: Attest SBOM
         if: github.event_name == 'push'
-        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
           subject-digest: ${{ env.digest }}
