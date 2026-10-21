@@ -21,7 +21,13 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Update flake.lock
-        run: nix flake update
+        id: update
+        run: |
+          OLD=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
+          nix flake update
+          NEW=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
+          echo "old=$OLD" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
 
       - name: Open/update PR
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
@@ -31,5 +37,12 @@ jobs:
           body: |
             Scheduled `nix flake update` (renovate's nix manager needs a
             nix binary, which the renovate image does not ship).
+
+            Upstream dependency changes in this bump:
+
+            https://github.com/NixOS/nixpkgs/compare/${{ steps.update.outputs.old }}...${{ steps.update.outputs.new }}
+
+            (Only packages whose closure actually changed produce new image
+            digests; unchanged apps rebuild byte-identical.)
           branch: chore/flake-lock
           delete-branch: true

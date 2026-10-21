@@ -63,6 +63,10 @@
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = sourceUrl;
           "org.opencontainers.image.version" = pkg.version;
+          # nixpkgs revision the image was built from (custom namespace: the
+          # standard revision label would make Renovate treat upstream release
+          # notes as nixpkgs commits).
+          "dev.zunin.nixpkgs-revision" = nixpkgs.rev;
         };
       };
     };
@@ -206,6 +210,10 @@
           "org.opencontainers.image.title" = pname;
           "org.opencontainers.image.source" = sourceUrl;
           "org.opencontainers.image.version" = pkg.version;
+          # nixpkgs revision the image was built from (custom namespace: the
+          # standard revision label would make Renovate treat upstream release
+          # notes as nixpkgs commits).
+          "dev.zunin.nixpkgs-revision" = nixpkgs.rev;
         };
       };
     };
