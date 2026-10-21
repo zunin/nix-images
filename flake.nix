@@ -14,7 +14,7 @@
     # Shared image builder. Every image gets the same story:
     # non-root (UID 1000), a read-only /nix/store, and writable dirs
     # that the kro Application mounts PVCs over at runtime.
-    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null, extraPath ? [ ] }:
+    mkImage = { pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null, extraPath ? [ ], sourceUrl ? "https://github.com/zunin/nix-images" }:
     pkgs.dockerTools.buildLayeredImage {
       # Placeholder owner (lowercase — docker rejects uppercase repos);
       # CI retags to ghcr.io/<repo-owner>/<pname> before pushing.
@@ -61,7 +61,7 @@
         Env = [ "PATH=${lib.makeBinPath ([ pkgs.coreutils pkgs.bashInteractive ] ++ extraPath)}" "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
-          "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
+          "org.opencontainers.image.source" = sourceUrl;
           "org.opencontainers.image.version" = pkg.version;
         };
       };
@@ -104,7 +104,7 @@
     # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
     phpWithExts = mkPhpExts pkgs.php;
 
-    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ], cacheDir ? null }:
+    mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ], cacheDir ? null, sourceUrl ? "https://github.com/zunin/nix-images" }:
     let
       fpmConf = pkgs.writeText "php-fpm.conf" ''
         [global]
@@ -204,7 +204,7 @@
         Env = [ "PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.bashInteractive php pkgs.caddy ]}" "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ] ++ extraEnv;
         Labels = {
           "org.opencontainers.image.title" = pname;
-          "org.opencontainers.image.source" = "https://github.com/zunin/nix-images";
+          "org.opencontainers.image.source" = sourceUrl;
           "org.opencontainers.image.version" = pkg.version;
         };
       };
@@ -213,6 +213,7 @@
     # One entry per app: ports/volumes/env must match the fleet manifests.
     apps = {
       audiobookshelf = {
+        sourceUrl = "https://github.com/advplyr/audiobookshelf";
         pkg = audiobookshelfRoot; # 2.37.1, client rebuilt with base ""
         port = 80;
         volumes = [ "/config" "/audiobooks" "/metadata" "/podcasts" ];
@@ -221,11 +222,13 @@
         extraEnv = [ "ROUTER_BASE_PATH=/" ];
       };
       navidrome = {
+        sourceUrl = "https://github.com/navidrome/navidrome";
         pkg = pkgs.navidrome; # 0.64.2
         port = 4533;
         volumes = [ "/data" "/music" ];
       };
       kavita = {
+        sourceUrl = "https://github.com/Kareadita/Kavita";
         pkg = pkgs.kavita; # 0.9.1.4
         port = 5000;
         volumes = [ "/kavita/config" "/media" ];
@@ -234,12 +237,14 @@
         workdir = "/kavita";
       };
       jellyfin = {
+        sourceUrl = "https://github.com/jellyfin/jellyfin";
         pkg = pkgs.jellyfin; # 12.2
         port = 8096;
         volumes = [ "/config" "/media" "/cache" ];
         cmdArgs = [ "--datadir" "/config" "--configdir" "/config/config" "--cachedir" "/cache" "--logdir" "/config/log" ];
       };
       hister = {
+        sourceUrl = "https://github.com/asciimoo/hister";
         pkg = pkgs.hister; # 0.20.0
         port = 4433;
         volumes = [ "/hister/search-data" "/hister/data" ];
@@ -251,6 +256,7 @@
         extraEnv = [ "HISTER__SERVER__ADDRESS=0.0.0.0:4433" "HISTER_DATA_DIR=/hister/search-data" ];
       };
       writefreely = {
+        sourceUrl = "https://github.com/writefreely/writefreely";
         pkg = pkgs.writefreely; # 0.17.2
         port = 8080;
         volumes = [ "/data" ];
@@ -259,6 +265,7 @@
         pkg = pkgs.freshrss; # 1.30.1
         image = mkPhpImage {
           pname = "freshrss";
+          sourceUrl = "https://github.com/FreshRSS/FreshRSS";
           pkg = pkgs.freshrss;
           webroot = "${pkgs.freshrss}/p";
           port = 8080;
@@ -271,6 +278,7 @@
         pkg = pkgs.grocy; # 4.7.1
         image = mkPhpImage {
           pname = "grocy";
+          sourceUrl = "https://github.com/grocy/grocy";
           pkg = pkgs.grocy;
           webroot = "${pkgs.grocy}/public";
           port = 8080;
@@ -292,6 +300,7 @@
         pkg = pkgs.wallabag; # 2.6.14
         image = mkPhpImage {
           pname = "wallabag";
+          sourceUrl = "https://github.com/wallabag/wallabag";
           pkg = pkgs.wallabag;
           webroot = "${pkgs.wallabag}/web";
           port = 8080;
@@ -349,6 +358,7 @@
               extraContents = apps.${name}.extraContents or [ ];
               workdir = apps.${name}.workdir or null;
               extraPath = apps.${name}.extraPath or [ ];
+              sourceUrl = apps.${name}.sourceUrl or "https://github.com/zunin/nix-images";
             });
           }) (builtins.attrNames apps)));
   };
