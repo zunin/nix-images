@@ -3,12 +3,17 @@
   extends: [
     "config:recommended",
     "helpers:pinGitHubActionDigests",
-    ":automergeBranch",
     ":disableRateLimiting",
     ":dependencyDashboard",
     ":semanticCommits",
     ":timezone(Europe/Copenhagen)",
   ],
+  // Merge PR-based updates (action bumps, SHA pins) once the platform allows
+  // it. Relies on the repo's "Allow auto-merge" setting; without it Renovate
+  // falls back to merging itself. CI runs on every PR (build-images.yml).
+  automerge: true,
+  automergeType: "pr",
+  platformAutomerge: true,
   dependencyDashboardTitle: "Renovate Dashboard 🤖",
   suppressNotifications: [
     "prEditedNotification",
