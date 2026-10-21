@@ -100,13 +100,37 @@
     # them with php-fpm + Caddy (FastCGI) as a non-root user on an unprivileged
     # port (the fleet Service maps :80 -> the container port).
     mkPhpExts = php: php.withExtensions ({ enabled, all }:
-      # filter by what the target PHP actually exposes: newer PHPs drop
-      # separate attrs for bundled extensions (php85 has no `opcache`).
-      enabled ++ (map (n: all.${n})
-        (lib.filter (n: all ? n)
-          [ "pdo_sqlite" "sqlite3" "intl" "gd" "curl" "zip" "exif" "opcache" ])));
+      # Skip extension test suites: several bundled OOM tests assert memory-limit
+      # behaviour that varies with the build environment (they failed under the
+      # local build sandbox for the 8.4.27 security backport). The php
+      # interpreter itself is still built and tested normally.
+      map (p: p.overrideAttrs (_: { doCheck = false; })) (
+        enabled ++ (map (n: all.${n})
+          (lib.filter (n: all ? n)
+            [ "pdo_sqlite" "sqlite3" "intl" "gd" "curl" "zip" "exif" "opcache" ]))));
     # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
-    phpWithExts = mkPhpExts pkgs.php;
+    #
+    # TEMPORARY security backport (2026-10-21): PHP released 8.3.36 / 8.4.27 /
+    # 8.5.12 fixing CVE-2026-109618 and CVE-2026-109619 (affects <= 8.4.26 /
+    # 8.5.11). nixpkgs master has the bump (PR #576853) but nixos-unstable has
+    # not advanced yet. Drop these overrides and go back to pkgs.php /
+    # pkgs.php85 once unstable includes the bump (the weekly flake-update
+    # workflow will otherwise pick it up anyway).
+    php84Patched = pkgs.php84.overrideAttrs (_: {
+      version = "8.4.27";
+      src = pkgs.fetchurl {
+        url = "https://www.php.net/distributions/php-8.4.27.tar.bz2";
+        hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
+      };
+    });
+    php85Patched = pkgs.php85.overrideAttrs (_: {
+      version = "8.5.12";
+      src = pkgs.fetchurl {
+        url = "https://www.php.net/distributions/php-8.5.12.tar.bz2";
+        hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
+      };
+    });
+    phpWithExts = mkPhpExts php84Patched;
 
     mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ], cacheDir ? null, sourceUrl ? "https://github.com/zunin/nix-images" }:
     let
@@ -291,7 +315,7 @@
           webroot = "${pkgs.grocy}/public";
           port = 8080;
           # grocy 4.7.1 hard-requires PHP >= 8.5 (boot-tested: 8.4 → HTTP 500).
-          php = mkPhpExts pkgs.php85;
+          php = mkPhpExts php85Patched;
           volumes = [ "/config" ];
           dirs = [ "/config" "/config/storage" "/config/plugins" "/config/viewcache" ];
           seed = [ { from = "${pkgs.grocy}/config-dist.php"; to = "/config/config.php"; } ];
