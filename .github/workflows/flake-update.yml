@@ -1,10 +1,10 @@
 name: flake-update
 on:
   schedule:
-    # Weekly nixpkgs bump lane. Renovate's nix manager cannot do this in
+    # Daily nixpkgs bump lane. Renovate's nix manager cannot do this in
     # the stock renovate image: it shells out to `nix flake update`, and
     # the image has no nix binary (and its /nix/store is read-only).
-  - cron: '0 4 * * 1'
+  - cron: '0 4 * * *'
   workflow_dispatch:
 
 permissions:
