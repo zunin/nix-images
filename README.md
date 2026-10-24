@@ -11,7 +11,11 @@ The whole point: one `nixos-unstable` revision drives **both** the base OS
 ## Layout
 
 ```
-flake.nix                  # one entry per app in `apps`; mkImage builds them
+flake.nix                  # inputs + wiring; packages output = <app> + <app>-image
+lib/mk-image.nix           # shared builder for binary apps
+lib/mk-php-image.nix       # php-fpm + Caddy builder (+ PHP extension/patch support)
+apps/<name>.nix            # one file per app; "_"-prefixed files are skipped
+apps/_spoolman.nix         # blocked apps live here until re-enabled
 flake.lock                 # pins the nixpkgs revision (generated, commit it)
 renovate.json5             # auto-merges flake.lock bumps (nix manager)
 .github/workflows/build-images.yml
@@ -35,8 +39,12 @@ byte-identical images.
 
 ## Adding an app
 
-1. Add an entry to `apps` in `flake.nix` (nixpkgs package, port, volumes).
-2. Add the app name to the workflow matrix.
+1. Create `apps/<name>.nix` returning the app attrs (nixpkgs package, port,
+   volumes) — see `apps/navidrome.nix` for a minimal example. PHP apps use
+   `mkPhpImage` (see `apps/grocy.nix`). Files with a leading `_` are skipped.
+2. Nothing else — the CI matrix is derived from the flake (`prepare` job
+   evaluates the `packages` outputs). Update the `workflow_dispatch` dropdown
+   only if you want the app in the manual-build picker.
 3. In `fleet/`, point the `Application` CR at `ghcr.io/<owner>/<app>` with a
    digest-pinned tag, and extend the renovate custom manager to data-source
    the GHCR package.

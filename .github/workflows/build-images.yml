@@ -29,12 +29,21 @@ jobs:
     outputs:
       apps: ${{ steps.set.outputs.apps }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
       - id: set
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'apps=["audiobookshelf","navidrome","kavita","jellyfin","hister","writefreely","gatus","freshrss","grocy","wallabag"]' >> "$GITHUB_OUTPUT"
+            # Derive the app list from the flake: every `packages.<system>.<app>-image`
+            # output (strip the -image suffix). Adding apps/<name>.nix is enough.
+            apps="$(nix eval --json '.#packages.x86_64-linux' --apply \
+              'p: map (n: builtins.substring 0 (builtins.stringLength n - 6) n) (builtins.filter (n: builtins.match ".*-image" n != null) (builtins.attrNames p))')"
+            echo "apps=$apps" >> "$GITHUB_OUTPUT"
           fi
 
   build:
