@@ -14,6 +14,7 @@ on:
           - jellyfin
           - hister
           - writefreely
+          - gatus
           - freshrss
           - grocy
           - wallabag
@@ -33,7 +34,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'apps=["${{ inputs.app }}"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'apps=["audiobookshelf","navidrome","kavita","jellyfin","hister","writefreely","freshrss","grocy","wallabag"]' >> "$GITHUB_OUTPUT"
+            echo 'apps=["audiobookshelf","navidrome","kavita","jellyfin","hister","writefreely","gatus","freshrss","grocy","wallabag"]' >> "$GITHUB_OUTPUT"
           fi
 
   build:

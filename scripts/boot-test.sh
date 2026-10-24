@@ -5,6 +5,22 @@
 set -u
 BASE="$(mktemp -d)"; trap 'rm -rf "$BASE"' EXIT
 
+# gatus refuses to boot without a config file. In the cluster the Gatus RGD
+# generates one; seed a minimal stand-in (same storage block) for the local
+# test, mounted via the volumes machinery below.
+mkdir -p "$BASE/gatus/config"
+cat > "$BASE/gatus/config/config.yaml" <<'EOF'
+storage:
+  type: sqlite
+  path: /data/gatus.db
+endpoints:
+  - name: gatus
+    url: http://localhost:8080/health
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+EOF
+
 # app|tag|containerPort|hostPort|healthPath|volumes(space-sep)|extra docker run args
 CASES=(
 "audiobookshelf|2.37.1|80|19001|/healthcheck|/config /audiobooks|"
@@ -13,6 +29,7 @@ CASES=(
 "jellyfin|12.2|8096|19004|/health|/config /media /cache|"
 "hister|0.20.0|4433|19005|/api/config|/hister/search-data /hister/data|-e HISTER__SERVER__BASE_URL=http://localhost:19005"
 "writefreely|0.17.2|8080|19006|/|/data|"
+"gatus|5.37.0|8080|19010|/health|/config /data|"
 "freshrss|1.30.1|8080|19007|/|/data /extensions|"
 "grocy|4.7.1|8080|19008|/|/config|"
 "wallabag|2.6.14|8080|19009|/|/config|"
