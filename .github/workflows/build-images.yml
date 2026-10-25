@@ -105,8 +105,16 @@ jobs:
           REV=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
           NIXPKGS="github:NixOS/nixpkgs/$REV"
 
+          # SBOM/grype TOOLS pinned to the last-known-good nixpkgs rev: at
+          # lock rev 3ec6363 (2026-10-25) sbomnix fails to build (its dep
+          # python3.14-reuse-6.2.0 produces no 'man' output). The SBOM
+          # TARGET below still evaluates $APP at the lock rev, so the SBOM
+          # stays accurate. Drop this pin once a lock rev builds sbomnix
+          # again.
+          TOOLS_NIXPKGS="github:NixOS/nixpkgs/55bfb4d7437bd4e09ab7cba58a43bd68eb310044"
+
           # 1. SBOM with nixpkgs metadata (CPEs) — flakeref target, not a store path.
-          nix run "$NIXPKGS#sbomnix" -- --cdx sbom.cdx.json "$NIXPKGS#$APP"
+          nix run "$TOOLS_NIXPKGS#sbomnix" -- --cdx sbom.cdx.json "$NIXPKGS#$APP"
 
           # 2. The attestation steps below need the pushed image digest (the
           #    "sha256:..." form, as reported by the registry manifest).
@@ -116,7 +124,7 @@ jobs:
 
           # 3. Scan the SBOM with Grype (CPE/NVD, unlike Trivy which can't map the
           #    pkg:nix ecosystem). Non-zero exit when vulns exist -> don't fail.
-          nix run "$NIXPKGS#grype" -- \
+          nix run "$TOOLS_NIXPKGS#grype" -- \
             --vex openvex.json --sort-by risk -q \
             -o sarif=grype.sarif -o json=grype.json \
             "sbom:sbom.cdx.json" || true
