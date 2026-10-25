@@ -32,6 +32,14 @@ renovate.json5             # auto-merges flake.lock bumps (nix manager)
 3. In `fleet/`, pin `image: <app>` + `tag: <version>@sha256:<digest>`:
    - renovate **auto-merges** digest changes (base/OS lane),
    - opens a **PR** when the version tag changes (app-version lane).
+4. **Unchanged builds are neither rebuilt nor pushed.** Every image carries
+   a `dev.zunin.build-fingerprint` label (builder file hash + nixpkgs rev +
+   package store path + all image params). The fingerprint is computed at
+   eval time, so when the published tag has the same fingerprint the
+   workflow skips the build **and** the push — no new `<version>-<run>` tag
+   and no duplicate attestations. This also absorbs nondeterministic
+   rebuilds (php/npm produce different bytes from identical inputs). PRs
+   always build; `workflow_dispatch` forces a rebuild.
 
 Because Nix is content-addressed, a nominal "rebuild all" only produces new
 digests for apps whose closure actually changed — unchanged apps rebuild to

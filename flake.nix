@@ -34,24 +34,31 @@
         };
       }
     ) appFiles);
+
+    # Each app's image builder result: { image, fingerprint }. PHP apps set
+    # `image = mkPhpImage {...}` in their own file; the rest go through mkImage.
+    images = builtins.mapAttrs (name: app:
+      app.image or (mkImage {
+        pname = name;
+        pkg = app.pkg;
+        port = app.port;
+        volumes = app.volumes;
+        cmdArgs = app.cmdArgs or [ ];
+        extraEnv = app.extraEnv or [ ];
+        cmd = app.cmd or null;
+        extraContents = app.extraContents or [ ];
+        workdir = app.workdir or null;
+        extraPath = app.extraPath or [ ];
+        sourceUrl = app.sourceUrl or "https://github.com/zunin/nix-images";
+      })
+    ) apps;
   in {
     packages.${system} =
       (builtins.mapAttrs (name: a: a.pkg) apps)
-      // (builtins.listToAttrs (builtins.map (name: {
-            name = "${name}-image";
-            value = apps.${name}.image or (mkImage {
-              pname = name;
-              pkg = apps.${name}.pkg;
-              port = apps.${name}.port;
-              volumes = apps.${name}.volumes;
-              cmdArgs = apps.${name}.cmdArgs or [ ];
-              extraEnv = apps.${name}.extraEnv or [ ];
-              cmd = apps.${name}.cmd or null;
-              extraContents = apps.${name}.extraContents or [ ];
-              workdir = apps.${name}.workdir or null;
-              extraPath = apps.${name}.extraPath or [ ];
-              sourceUrl = apps.${name}.sourceUrl or "https://github.com/zunin/nix-images";
-            });
-          }) (builtins.attrNames apps)));
+      // (lib.mapAttrs' (name: v: { name = "${name}-image"; value = v.image; }) images);
+
+    # Build-inputs fingerprints (plain strings, computable without building)
+    # so CI can skip rebuilding images whose inputs are unchanged.
+    imageFingerprints.${system} = builtins.mapAttrs (name: v: v.fingerprint) images;
   };
 }

@@ -111,8 +111,23 @@ let
       ${php}/bin/php-fpm -F -y ${fpmConf} &
       exec ${pkgs.caddy}/bin/caddy run --config ${caddyfile} --adapter caddyfile
     '';
+
+    # Exact fingerprint of everything that shapes this image; CI skips the
+    # push when the published tag carries the same label (see mk-image.nix).
+    fingerprint = builtins.hashString "sha256" (builtins.toJSON {
+      builder = builtins.hashFile "sha256" ./mk-php-image.nix;
+      inherit pname port volumes dirs seed extraEnv entryFile extraCaddy params symlinks cacheDir sourceUrl;
+      package = pkg.outPath;
+      phpPackage = php.outPath;
+      caddy = pkgs.caddy.outPath;
+      nixpkgs = nixpkgsRev;
+      webroot = "${webroot}";
+    });
   in
-  pkgs.dockerTools.buildLayeredImage {
+  {
+    inherit fingerprint;
+
+    image = pkgs.dockerTools.buildLayeredImage {
     name = "ghcr.io/owner/${pname}";
     tag = pkg.version;
     contents = [ pkg entrypoint php pkgs.caddy pkgs.cacert ];
@@ -150,7 +165,11 @@ let
         # standard revision label would make Renovate treat upstream release
         # notes as nixpkgs commits).
         "dev.zunin.nixpkgs-revision" = nixpkgsRev;
+        # Build-inputs fingerprint; CI skips build/push when the published
+        # image already carries the same value.
+        "dev.zunin.build-fingerprint" = fingerprint;
       };
+    };
     };
   };
 in

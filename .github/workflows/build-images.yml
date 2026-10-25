@@ -69,19 +69,64 @@ jobs:
       - name: Ensure flake.lock exists (first run)
         run: nix flake lock --accept-flake-config
 
+      - name: Resolve version and build fingerprint
+        id: buildinfo
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          version="$(nix eval --raw .#packages.x86_64-linux.$APP.version)"
+          fingerprint="$(nix eval --raw .#imageFingerprints.x86_64-linux.$APP)"
+          echo "version=$version" >> "$GITHUB_ENV"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_ENV"
+          echo "build fingerprint: $fingerprint"
+
+      # Skip build and push when the published tag already carries the same
+      # build fingerprint (app package + nixpkgs rev + image params + builder
+      # version). The fingerprint is computed at eval time, so this also
+      # avoids the expensive nondeterministic php/npm rebuilds when nothing
+      # changed. PRs always build (validation); dispatch forces a rebuild.
+      - name: Compare with published image
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -uo pipefail
+          repo="${{ github.repository_owner }}/$APP"
+          remote_fp=""
+          token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${repo}:pull" 2>/dev/null | jq -r '.token // empty' 2>/dev/null || true)"
+          if [ -n "${token:-}" ]; then
+            manifest="$(curl -fsSL \
+              -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/${repo}/manifests/${version}" 2>/dev/null || true)"
+            config_digest="$(jq -r '.config.digest // empty' <<<"${manifest:-{\}}" 2>/dev/null || true)"
+            if [ -n "${config_digest:-}" ]; then
+              remote_fp="$(curl -fsSL -H "Authorization: Bearer $token" \
+                "https://ghcr.io/v2/${repo}/blobs/${config_digest}" 2>/dev/null \
+                | jq -r '.config.Labels["dev.zunin.build-fingerprint"] // empty' 2>/dev/null || true)"
+            fi
+          fi
+          if [ -n "$remote_fp" ] && [ "$remote_fp" = "$fingerprint" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=$APP::unchanged ($fingerprint) — skipping build and push"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=$APP::building (local=$fingerprint remote=${remote_fp:-none})"
+          fi
+
       - name: Build image archive
         id: build
+        if: github.event_name != 'push' || steps.gate.outputs.build == 'true'
         env:
           APP: ${{ matrix.app }}
         run: |
           archive="$(nix build --no-link --print-out-paths .#packages.x86_64-linux.$APP-image)"
-          version="$(nix eval --raw .#packages.x86_64-linux.$APP.version)"
           echo "archive=$archive" >> "$GITHUB_ENV"
-          echo "version=$version" >> "$GITHUB_ENV"
           docker load < "$archive"
 
       - name: Push to GHCR (mutable + immutable tags)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true'
         env:
           APP: ${{ matrix.app }}
         run: |
@@ -97,7 +142,7 @@ jobs:
       # and scanned with Grype (CPE/NVD, unlike Trivy which can't map the pkg:nix
       # ecosystem) into SARIF for the Security tab.
       - name: Generate SBOM + Grype -> SARIF
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true'
         env:
           APP: ${{ matrix.app }}
           NIX_CONFIG: "experimental-features = nix-command flakes"
@@ -153,7 +198,7 @@ jobs:
       # build provenance are bound to the image digest and pushed to GHCR, so
       # they show on the package page and verify with `gh attestation verify`.
       - name: Attest SBOM
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true'
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
@@ -162,7 +207,7 @@ jobs:
           push-to-registry: true
 
       - name: Attest build provenance
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
@@ -170,14 +215,14 @@ jobs:
           push-to-registry: true
 
       - name: Upload Grype SARIF to Security tab
-        if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true' && hashFiles('grype.sarif') != ''
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: grype.sarif
           category: grype-${{ matrix.app }}
 
       - name: Upload Grype SARIF artifact
-        if: github.event_name == 'push' && hashFiles('grype.sarif') != ''
+        if: github.event_name == 'push' && steps.gate.outputs.build == 'true' && hashFiles('grype.sarif') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: grype-${{ matrix.app }}-sarif
