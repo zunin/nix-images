@@ -81,6 +81,10 @@ docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
 
 ## Caveats
 
+- Rebuilds are gated on the `dev.zunin.build-fingerprint` label, so a
+  no-op push (docs/workflow-only change) costs only the eval plus one
+  registry lookup per app — no builds, no pushes, no attestations.
+
 - App-version timing rides nixpkgs (`unstable` ≈ days–weeks behind upstream).
 - Some nixpkgs wrappers ignore env and only read CLI flags — pass the correct
   invocation via an app's `cmdArgs`/`extraEnv` in `flake.nix`. audiobookshelf is
