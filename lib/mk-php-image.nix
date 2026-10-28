@@ -26,8 +26,8 @@ let
   # 8.5.12 fixing CVE-2026-109618 and CVE-2026-109619 (affects <= 8.4.26 /
   # 8.5.11). nixpkgs master has the bump (PR #576853) but nixos-unstable has
   # not advanced yet. Drop these overrides and go back to pkgs.php /
-  # pkgs.php85 once unstable includes the bump (the weekly flake-update
-  # workflow will otherwise pick it up anyway).
+  # pkgs.php85 once unstable includes the bump (the renovate flake.lock
+  # bump lane will otherwise pick it up anyway).
   php84Patched = pkgs.php84.overrideAttrs (_: {
     version = "8.4.27";
     src = pkgs.fetchurl {

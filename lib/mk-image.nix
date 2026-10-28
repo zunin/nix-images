@@ -6,7 +6,7 @@
 # the dev.zunin.nixpkgs-revision label) and returns the builder function,
 # which returns { image, fingerprint }.
 { pkgs, nixpkgsRev }:
-{ pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null, extraPath ? [ ], sourceUrl ? "https://github.com/zunin/nix-images" }:
+{ pname, pkg, port ? 80, volumes ? [ ], cmdArgs ? [ ], extraEnv ? [ ], cmd ? null, extraContents ? [ ], workdir ? null, extraPath ? [ ], extraFakeRootCommands ? "", sourceUrl ? "https://github.com/zunin/nix-images" }:
 let
   lib = pkgs.lib;
 
@@ -22,6 +22,7 @@ let
     nixpkgs = nixpkgsRev;
     extraContents = map (p: "${p}") extraContents;
     extraPath = map (p: "${p}") extraPath;
+    inherit extraFakeRootCommands;
   });
 in
 {
@@ -59,6 +60,10 @@ in
         mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
         chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
       ''}
+      # App-provided fakeroot setup, e.g. for images whose app mutates the
+      # nix store at runtime (renovate's `nix flake update` fetches into
+      # /nix/store and inits its db under /nix/var/nix).
+      ${extraFakeRootCommands}
     '';
 
     # Fixed timestamp -> reproducible digests.

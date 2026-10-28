@@ -19,10 +19,25 @@
     "prEditedNotification",
     "prIgnoreNotification",
   ],
-  // Renovate's nix manager shells out to `nix flake update`; the stock
-  // renovate image has no nix binary (and no writable store), so flake.lock
-  // bumps are handled by .github/workflows/flake-update.yml instead.
+  // The self-hosted runner (fleet/renovate CronJob) now runs the
+  // nix-images-built ghcr.io/zunin/renovate image, which bundles the nix
+  // CLI (and git) the manager needs. lockFileMaintenance bumps flake.lock
+  // daily; this replaces the deleted .github/workflows/flake-update.yml
+  // lane (the stock renovate image has no nix binary).
   nix: {
-    enabled: false,
+    enabled: true,
   },
+  packageRules: [
+    {
+      matchManagers: [ "nix" ],
+      lockFileMaintenance: { enabled: true },
+      // Runner cron is @midnight UTC (~01/02:00 local) — inside the window.
+      schedule: [ "before 5am" ],
+      // Semantic prefix is prepended automatically, so both the commit and
+      // the (squash-merge) PR title read "chore(deps): update flake.lock" —
+      // the shape the deleted flake-update workflow used.
+      commitMessageAction: "update",
+      commitMessageTopic: "flake.lock",
+    },
+  ],
 }

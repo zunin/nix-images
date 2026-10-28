@@ -49,6 +49,7 @@
         extraContents = app.extraContents or [ ];
         workdir = app.workdir or null;
         extraPath = app.extraPath or [ ];
+        extraFakeRootCommands = app.extraFakeRootCommands or "";
         sourceUrl = app.sourceUrl or "https://github.com/zunin/nix-images";
       })
     ) apps;

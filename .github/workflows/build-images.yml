@@ -18,6 +18,7 @@ on:
           - freshrss
           - grocy
           - wallabag
+          - renovate
   pull_request:
   push:
     branches: [main]

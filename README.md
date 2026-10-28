@@ -93,6 +93,11 @@ docker run --rm -p 80:80 -v /tmp/abconfig:/config -v /tmp/abaudio:/audiobooks \
 - Size varies wildly by closure: audiobookshelf pulls nixpkgs' `ffmpeg-full`
   (gtk/gstreamer/mesa/opencv) → ~1.9 GB, vs ~124 MB official. Overriding to
   `ffmpeg-headless` needs a local wrapper (the nixpkgs package hardcodes it).
+- The `renovate` image needs a **writable rootfs**: its `nix flake update`
+  fetches tarballs into `/nix/store` and inits the nix db under `/nix/var/nix`
+  (see `apps/renovate.nix`). Don't set `readOnlyRootFilesystem` on that
+  CronJob; the store *directory* is chowned to UID 1000 at build time via
+  `extraFakeRootCommands`, existing store paths stay read-only.
 - Some nixpkgs packages are "raw files" (e.g. wallabag) and need a wrapper
   image — so far both apps here are straight `dockerTools` jobs.
 - The image `name` uses the `owner` placeholder; CI retags to the GitHub repo
