@@ -60,9 +60,11 @@ in
         mkdir -p ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
         chown -R 1000:1000 ${builtins.concatStringsSep " " (map (v: ".${v}") volumes)}
       ''}
-      # App-provided fakeroot setup, e.g. for images whose app mutates the
-      # nix store at runtime (renovate's `nix flake update` fetches into
-      # /nix/store and inits its db under /nix/var/nix).
+      # App-provided fakeroot setup, e.g. pre-creating writable runtime dirs
+      # (apps/renovate.nix pre-creates /tmp/renovate). NOTE: this runs in the
+      # customisation layer — a symlinkJoin of `contents` — which has no
+      # ./nix (store contents live in separate store layers), and under
+      # `bash -e`: a failing command here fails the whole image build.
       ${extraFakeRootCommands}
     '';
 
