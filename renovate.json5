@@ -27,11 +27,19 @@
   nix: {
     enabled: true,
   },
+  // Must be top-level: flatten.ts gates generation of the maintenance
+  // update on the package-file config BEFORE packageRules are applied, so
+  // enabling it inside a packageRule silently does nothing. Only managers
+  // with lock-file support generate anything; here that is just `nix`.
+  lockFileMaintenance: {
+    enabled: true,
+  },
   packageRules: [
     {
       matchManagers: [ "nix" ],
-      lockFileMaintenance: { enabled: true },
-      // Runner cron is @midnight UTC (~01/02:00 local) — inside the window.
+      // Applies to the generated lock-maintenance branch (and the input
+      // update): runner cron is @midnight UTC (~01/02:00 local) — inside
+      // the window — instead of the default "before 4am on monday".
       schedule: [ "before 5am" ],
       // Semantic prefix is prepended automatically, so both the commit and
       // the (squash-merge) PR title read "chore(deps): update flake.lock" —
