@@ -30,7 +30,7 @@
       in {
         inherit name;
         value = pkgs.callPackage (./apps + "/${file}") {
-          inherit (phpLib) mkPhpImage mkPhpExts php84Patched php85Patched phpWithExts;
+          inherit (phpLib) mkPhpImage mkPhpExts phpWithExts;
         };
       }
     ) appFiles);

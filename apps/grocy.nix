@@ -1,4 +1,4 @@
-{ pkgs, mkPhpImage, mkPhpExts, php85Patched, ... }:
+{ pkgs, mkPhpImage, mkPhpExts, ... }:
 {
   pkg = pkgs.grocy; # 4.7.1
   image = mkPhpImage {
@@ -8,7 +8,7 @@
     webroot = "${pkgs.grocy}/public";
     port = 8080;
     # grocy 4.7.1 hard-requires PHP >= 8.5 (boot-tested: 8.4 → HTTP 500).
-    php = mkPhpExts php85Patched;
+    php = mkPhpExts pkgs.php85;
     volumes = [ "/config" ];
     dirs = [ "/config" "/config/storage" "/config/plugins" "/config/viewcache" ];
     seed = [ { from = "${pkgs.grocy}/config-dist.php"; to = "/config/config.php"; } ];

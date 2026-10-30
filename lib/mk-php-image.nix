@@ -6,7 +6,7 @@
 #
 # Takes { pkgs, nixpkgsRev } (the flake input's locked revision, used for
 # the dev.zunin.nixpkgs-revision label) and returns:
-#   mkPhpExts, php84Patched, php85Patched, phpWithExts, mkPhpImage
+#   mkPhpExts, phpWithExts, mkPhpImage
 { pkgs, nixpkgsRev }:
 let
   lib = pkgs.lib;
@@ -14,35 +14,17 @@ let
   mkPhpExts = php: php.withExtensions ({ enabled, all }:
     # Skip extension test suites: several bundled OOM tests assert memory-limit
     # behaviour that varies with the build environment (they failed under the
-    # local build sandbox for the 8.4.27 security backport). The php
-    # interpreter itself is still built and tested normally.
+    # local build sandbox on the PHP 8.4.27 build). The php interpreter itself
+    # is still built and tested normally.
     map (p: p.overrideAttrs (_: { doCheck = false; })) (
       enabled ++ (map (n: all.${n})
         (lib.filter (n: all ? n)
           [ "pdo_sqlite" "sqlite3" "intl" "gd" "curl" "zip" "exif" "opcache" ]))));
-  # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts php85Patched`.
-  #
-  # TEMPORARY security backport (2026-10-21): PHP released 8.3.36 / 8.4.27 /
-  # 8.5.12 fixing CVE-2026-109618 and CVE-2026-109619 (affects <= 8.4.26 /
-  # 8.5.11). nixpkgs master has the bump (PR #576853) but nixos-unstable has
-  # not advanced yet. Drop these overrides and go back to pkgs.php /
-  # pkgs.php85 once unstable includes the bump (the renovate flake.lock
-  # bump lane will otherwise pick it up anyway).
-  php84Patched = pkgs.php84.overrideAttrs (_: {
-    version = "8.4.27";
-    src = pkgs.fetchurl {
-      url = "https://www.php.net/distributions/php-8.4.27.tar.bz2";
-      hash = "sha256-slMKh3xyL0sIyeF0owywi6wrfhkD7m6eMV8KqfX4LCQ=";
-    };
-  });
-  php85Patched = pkgs.php85.overrideAttrs (_: {
-    version = "8.5.12";
-    src = pkgs.fetchurl {
-      url = "https://www.php.net/distributions/php-8.5.12.tar.bz2";
-      hash = "sha256-/7YO3EN87WO1E35JhNs3moERxQBJxxFRDYuVgnfvwag=";
-    };
-  });
-  phpWithExts = mkPhpExts php84Patched;
+  # Default PHP (8.4). Apps needing a newer PHP pass `php = mkPhpExts pkgs.php85`.
+  # (The 2026-10 temporary 8.4.27/8.5.12 backports for CVE-2026-109618/19 are
+  # gone: nixos-unstable's php84/php85 carry those versions since the
+  # 31ecbaca flake.lock bump.)
+  phpWithExts = mkPhpExts pkgs.php84;
 
   mkPhpImage = { pname, pkg, webroot, port ? 8080, volumes ? [ ], dirs ? [ ], seed ? [ ], extraEnv ? [ ], php ? phpWithExts, entryFile ? "index.php", extraCaddy ? "", params ? null, symlinks ? [ ], cacheDir ? null, sourceUrl ? "https://github.com/zunin/nix-images" }:
   let
@@ -174,5 +156,5 @@ let
   };
 in
 {
-  inherit mkPhpExts php84Patched php85Patched phpWithExts mkPhpImage;
+  inherit mkPhpExts phpWithExts mkPhpImage;
 }
