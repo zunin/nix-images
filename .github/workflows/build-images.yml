@@ -95,6 +95,7 @@ jobs:
           set -uo pipefail
           repo="${{ github.repository_owner }}/$APP"
           remote_fp=""
+          remote_has_generator=false
           token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${repo}:pull" 2>/dev/null | jq -r '.token // empty' 2>/dev/null || true)"
           if [ -n "${token:-}" ]; then
             manifest="$(curl -fsSL \
@@ -103,10 +104,19 @@ jobs:
               "https://ghcr.io/v2/${repo}/manifests/${version}" 2>/dev/null || true)"
             config_digest="$(jq -r '.config.digest // empty' <<<"${manifest:-{\}}" 2>/dev/null || true)"
             if [ -n "${config_digest:-}" ]; then
-              remote_fp="$(curl -fsSL -H "Authorization: Bearer $token" \
-                "https://ghcr.io/v2/${repo}/blobs/${config_digest}" 2>/dev/null \
-                | jq -r '.config.Labels["dev.zunin.build-fingerprint"] // empty' 2>/dev/null || true)"
+              remote_config="$(curl -fsSL -H "Authorization: Bearer $token" \
+                "https://ghcr.io/v2/${repo}/blobs/${config_digest}" 2>/dev/null || true)"
+              remote_fp="$(jq -r '.config.Labels["dev.zunin.build-fingerprint"] // empty' \
+                <<<"${remote_config:-{\}}" 2>/dev/null || true)"
+              remote_has_generator="$(jq -r 'any(.config.Env[]?; startswith("PATH=") and contains("-update-flux/bin"))' \
+                <<<"${remote_config:-{\}}" 2>/dev/null || true)"
             fi
+          fi
+          # A legacy Renovate image can have a matching label but lack the
+          # required Flux generator. Verify that capability before skipping.
+          if [ "$APP" = renovate ] && [ "$remote_has_generator" != true ]; then
+            remote_fp=""
+            echo "::notice title=$APP::missing update-flux — forcing rebuild"
           fi
           if [ -n "$remote_fp" ] && [ "$remote_fp" = "$fingerprint" ]; then
             echo "build=false" >> "$GITHUB_OUTPUT"
