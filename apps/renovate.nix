@@ -11,6 +11,13 @@ let
     mkdir -p "$root/nix/store" "$root/nix/var/nix/db" "$root/nix/var/nix/temproots"
     exec ${pkgs.nix}/bin/nix --store "$root" "$@"
   '';
+  # Package the task in the immutable image, not in Renovate's checked-out
+  # repository. It fetches a checksum-verified CLI matching the proposed release.
+  updateFlux = pkgs.writeShellApplication {
+    name = "update-flux";
+    runtimeInputs = [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gawk pkgs.gnugrep pkgs.gzip ];
+    text = builtins.readFile ../scripts/update-flux.sh;
+  };
 in
 {
   sourceUrl = "https://github.com/renovatebot/renovate";
@@ -21,11 +28,11 @@ in
   # requires one; it only shows up as harmless ExposedPorts metadata.
   port = 80;
   volumes = [ ];
-  # Renovate shells out to the system `git` binary and the nix manager needs
-  # `nix`; nodejs must be on PATH for child processes. The rootless-nix shim
-  # is first so it shadows the store-backed nix for every invocation.
-  extraContents = [ nixRootless pkgs.git pkgs.nix pkgs.nodejs ];
-  extraPath = [ nixRootless pkgs.git pkgs.nix pkgs.nodejs ];
+  # Renovate shells out to git/nix/nodejs; update-flux regenerates complete
+  # system manifests while keeping Renovate's shell executor disabled.
+  # The rootless-nix shim is first so it shadows the store-backed nix.
+  extraContents = [ nixRootless pkgs.git pkgs.nix pkgs.nodejs pkgs.fluxcd updateFlux ];
+  extraPath = [ nixRootless pkgs.git pkgs.nix pkgs.nodejs pkgs.fluxcd updateFlux ];
   # Writable HOME (git config/caches, chroot store); the CronJob mounts an
   # emptyDir at /tmp/renovate (RENOVATE_BASE_DIR).
   extraEnv = [ "HOME=/tmp/renovate" ];
